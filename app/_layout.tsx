@@ -1,29 +1,48 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
+        {/* Splash / auth check page */}
+        <Stack.Screen 
+          name="index" 
+          options={{ headerShown: false }} 
+        />
+
+        {/* Entry page */}
+        <Stack.Screen 
+          name="Splash" 
+          options={{ headerShown: false }} 
+        />
+
+        {/* Auth = login page */}
+        <Stack.Screen 
+          name="/Auth" 
+          options={{ headerShown: false }} 
+        />
+
+        {/* Sign up page */}
+        <Stack.Screen 
+          name="/SignUp" 
+          options={{ headerShown: false }} 
+        />
+
+        {/* Onboarding page */}
+        <Stack.Screen 
+          name="/Onboarding" 
+          options={{ headerShown: false }} 
+        />
+        
+
+        {/* Tabs layout */}
+        <Stack.Screen 
+          name="(tabs)" 
+          options={{ headerShown: false }} 
+        />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+      <StatusBar style="light" />
+    </>
   );
 }

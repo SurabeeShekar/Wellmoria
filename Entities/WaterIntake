@@ -1,0 +1,35 @@
+{
+  "name": "WaterIntake",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of water intake"
+    },
+    "amount_ml": {
+      "type": "number",
+      "description": "Amount of water consumed in ml"
+    },
+    "log_entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "description": "Time of water intake"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount in ml"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "date",
+    "amount_ml"
+  ]
+}

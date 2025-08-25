@@ -1,0 +1,27 @@
+{
+  "name": "StepRecord",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the step record"
+    },
+    "steps": {
+      "type": "number",
+      "description": "Number of steps for the day"
+    },
+    "calories_burned": {
+      "type": "number",
+      "description": "Calories burned from steps"
+    },
+    "distance_km": {
+      "type": "number",
+      "description": "Distance covered in kilometers"
+    }
+  },
+  "required": [
+    "date",
+    "steps"
+  ]
+}
