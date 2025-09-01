@@ -1,11 +1,21 @@
+import Ionicons from "@expo/vector-icons/Ionicons"; // Icon library for tab navigation + UI
+import { Slot, usePathname, useRouter } from "expo-router"; // Expo Router utilities
+import { getAuth } from "firebase/auth"; // Firebase authentication
+import { get, getDatabase, ref } from "firebase/database"; // Firebase Realtime Database
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Slot, useRouter, usePathname } from "expo-router";
-import { getAuth } from "firebase/auth";
-import { getDatabase, ref, get } from "firebase/database";
-import { app } from "../../Firebase"; // Your Firebase config
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { app } from "../../Firebase"; // Firebase app instance
 
+// --- User Data Interface ---
+// Defines the structure of the user object fetched from Firebase
 interface UserData {
   uid: string;
   full_name: string;
@@ -16,6 +26,8 @@ interface UserData {
   weight?: number;
 }
 
+// --- Bottom Navigation Items ---
+// Each object represents a tab in the bottom navigation bar
 const navigationItems = [
   { name: "Home", icon: "home-outline", route: "/(tabs)/Home" },
   { name: "Steps", icon: "walk-outline", route: "/(tabs)/Steps" },
@@ -25,45 +37,51 @@ const navigationItems = [
 ];
 
 export default function TabsLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
+  const router = useRouter(); // Used for navigation
+  const pathname = usePathname(); // Gets current active route
 
-  const [user, setUser] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<UserData | null>(null); // Holds logged-in user data
+  const [loading, setLoading] = useState(true); // Tracks loading state
 
+  // --- Check user authentication + fetch data from Firebase ---
   useEffect(() => {
     const checkUserData = async () => {
       try {
         const auth = getAuth(app);
         const currentUser = auth.currentUser;
 
+        // If no user is logged in → redirect to Auth screen
         if (!currentUser) {
           router.replace("/Auth");
           return;
         }
 
+        // Fetch user data from Realtime Database
         const db = getDatabase(app);
         const userRef = ref(db, `users/${currentUser.uid}`);
         const snapshot = await get(userRef);
         const userData = snapshot.val();
 
+        // If onboarding details are missing → redirect to Onboarding
         if (!userData || !userData.age || !userData.height || !userData.weight) {
           router.replace("/Onboarding");
           return;
         }
 
+        // Store user data in state var
         setUser(userData);
       } catch (err) {
         console.log("Error fetching user data:", err);
-        router.replace("/Auth");
+        router.replace("/Auth"); // On error, send user back to Auth
       } finally {
-        setLoading(false);
+        setLoading(false); // Stop loading spinner
       }
     };
 
     checkUserData();
   }, []);
 
+  // --- Show loading screen while fetching data ---
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -73,19 +91,27 @@ export default function TabsLayout() {
     );
   }
 
+  // --- Main Layout ---
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container}>
+      {/* ---------- Header Section ---------- */}
       <View style={styles.header}>
+        {/* Left side: Logo + App Name + Greeting */}
         <View style={styles.headerLeft}>
           <View style={styles.logoContainer}>
             <Ionicons name="heart" size={24} color="white" />
           </View>
           <View>
             <Text style={styles.title}>Wellmoria</Text>
-            {user && <Text style={styles.subtitle}>Welcome back, {user.full_name?.split(" ")[0]}!</Text>}
+            {user && (
+              <Text style={styles.subtitle}>
+                Welcome back, {user.full_name?.split(" ")[0]}!
+              </Text>
+            )}
           </View>
         </View>
+
+        {/* Right side: Level & Points */}
         {user && (
           <View style={styles.headerRight}>
             <Text style={styles.levelText}>Level {user.current_level || 1}</Text>
@@ -94,31 +120,41 @@ export default function TabsLayout() {
         )}
       </View>
 
-      {/* Content */}
+      {/* ---------- Content Section ---------- */}
+      {/* Slot renders the nested routes (tabs pages) */}
       <ScrollView style={styles.content}>
         <Slot />
       </ScrollView>
 
-      {/* Bottom Nav */}
+      {/* ---------- Bottom Navigation Bar ---------- */}
       <View style={styles.bottomNav}>
         {navigationItems.map((item) => {
-          const isActive = pathname === item.route;
+          const isActive = pathname === item.route; // Highlight active tab
           return (
             <TouchableOpacity
               key={item.name}
               style={[styles.navItem, isActive && styles.navItemActive]}
-              onPress={() => router.push(item.route as any)}
+              onPress={() => router.push(item.route as any)} // Navigate to route
             >
-              <Ionicons name={item.icon as any} size={24} color={isActive ? "#14b8a6" : "#9ca3af"} />
-              <Text style={[styles.navText, isActive && styles.navTextActive]}>{item.name}</Text>
+              {/* Tab Icon */}
+              <Ionicons
+                name={item.icon as any}
+                size={24}
+                color={isActive ? "#14b8a6" : "#9ca3af"}
+              />
+              {/* Tab Label */}
+              <Text style={[styles.navText, isActive && styles.navTextActive]}>
+                {item.name}
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f0fdff" },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },

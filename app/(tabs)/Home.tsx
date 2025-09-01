@@ -7,18 +7,19 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { format, subDays } from "date-fns";
-import { getDatabase, ref, onValue } from "firebase/database";
+import { getDatabase, ref, onValue, set } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import { ProgressBar } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function Home() {
-  const [user, setUser] = useState<any>(null);
-  const [todaySteps, setTodaySteps] = useState<any>(null);
-  const [todayWater, setTodayWater] = useState<any>(null);
-  const [weeklySteps, setWeeklySteps] = useState<any[]>([]);
-  const [weeklyWater, setWeeklyWater] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // --- Local state variables (dynamic data) ---
+  const [user, setUser] = useState<any>(null); // User profile data
+  const [todaySteps, setTodaySteps] = useState<number>(0); // Steps for today
+  const [todayWater, setTodayWater] = useState<number>(0); // Water intake for today
+  const [weeklySteps, setWeeklySteps] = useState<any[]>([]); // Last 7 days of step data
+  const [weeklyWater, setWeeklyWater] = useState<any[]>([]); // Last 7 days of water data
+  const [loading, setLoading] = useState(true); // Loading state while fetching data
 
   useEffect(() => {
     const db = getDatabase();
@@ -28,68 +29,72 @@ export default function Home() {
 
     const today = format(new Date(), "yyyy-MM-dd");
 
-    // User profile
+    // --- Steps for today (ensure the node exists) ---
+    const stepsTodayRef = ref(db, `users/${currentUser.uid}/steps/${today}`);
+    onValue(stepsTodayRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.val();
+        setTodaySteps(data?.steps ?? 0);
+      } else {
+        // Initialize with 0 if missing
+        set(stepsTodayRef, { steps: 0, calories_burned: 0 });
+        setTodaySteps(0);
+      }
+    });
+
+    // --- Water for today (ensure the node exists) ---
+    const waterTodayRef = ref(db, `users/${currentUser.uid}/water/${today}`);
+    onValue(waterTodayRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.val();
+        setTodayWater(data?.amount_ml ?? 0);
+      } else {
+        // Initialize with 0 if missing
+        set(waterTodayRef, { amount_ml: 0 });
+        setTodayWater(0);
+      }
+    });
+
+    // --- User profile data ---
     const userRef = ref(db, `users/${currentUser.uid}`);
     onValue(userRef, (snap) => {
       if (snap.exists()) setUser(snap.val());
     });
 
-    // Today's summary (steps + water)
-    const todayRef = ref(db, `users/${currentUser.uid}/today`);
-    onValue(todayRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.val();
-        if (data.steps) setTodaySteps(data.steps);
-        if (data.water_ml !== undefined) setTodayWater({ amount_ml: data.water_ml });
-      }
-    });
-
-    //  Weekly steps 
+    // --- Weekly steps (last 7 days, fill missing with 0) ---
     const stepsRef = ref(db, `users/${currentUser.uid}/steps`);
     onValue(stepsRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.val();
-        const last7: any[] = [];
-        for (let i = 0; i < 7; i++) {
-          const day = format(subDays(new Date(), i), "yyyy-MM-dd");
-          if (data[day]) last7.push(data[day]);
-        }
-        setWeeklySteps(last7.reverse());
-      } else {
-        setWeeklySteps([]);
+      const data = snap.exists() ? snap.val() : {};
+      const last7: any[] = [];
+      for (let i = 0; i < 7; i++) {
+        const day = format(subDays(new Date(), i), "yyyy-MM-dd");
+        last7.push(data[day] ?? { steps: 0, calories_burned: 0 });
       }
+      setWeeklySteps(last7.reverse()); // Reverse so oldest comes first
     });
 
-    // Weekly water 
+    // --- Weekly water (last 7 days, fill missing with 0) ---
     const waterRef = ref(db, `users/${currentUser.uid}/water`);
     onValue(waterRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.val();
-        const last7: any[] = [];
-        for (let i = 0; i < 7; i++) {
-          const day = format(subDays(new Date(), i), "yyyy-MM-dd");
-          if (data[day]) last7.push(data[day]);
-        }
-        setWeeklyWater(last7.reverse());
-      } else {
-        setWeeklyWater([]);
+      const data = snap.exists() ? snap.val() : {};
+      const last7: any[] = [];
+      for (let i = 0; i < 7; i++) {
+        const day = format(subDays(new Date(), i), "yyyy-MM-dd");
+        last7.push(data[day] ?? { amount_ml: 0 });
       }
+      setWeeklyWater(last7.reverse()); // Reverse so oldest comes first
     });
 
-    // Wait until listeners initialize
+    // Small delay to show loading spinner
     setTimeout(() => setLoading(false), 800);
   }, []);
 
-  //  Helpers 
+  // --- Helper functions for progress calculations ---
   const getStepProgress = () =>
-    todaySteps && user?.daily_step_goal
-      ? Math.min((todaySteps.steps || 0) / user.daily_step_goal, 1)
-      : 0;
+    user?.daily_step_goal ? Math.min(todaySteps / user.daily_step_goal, 1) : 0;
 
   const getWaterProgress = () =>
-    todayWater && user?.daily_water_goal
-      ? Math.min((todayWater.amount_ml || 0) / user.daily_water_goal, 1)
-      : 0;
+    user?.daily_water_goal ? Math.min(todayWater / user.daily_water_goal, 1) : 0;
 
   const getNextLevelPoints = () => (user?.current_level || 1) * 1000;
 
@@ -102,6 +107,7 @@ export default function Home() {
     return Math.min(gained / needed, 1);
   };
 
+  // --- Weekly totals (calculated from 7-day arrays) ---
   const totalWeeklySteps = weeklySteps.reduce((sum, d) => sum + (d.steps || 0), 0);
   const totalWeeklyWater = weeklyWater.reduce(
     (sum, d) => sum + (d.amount_ml || 0),
@@ -112,6 +118,7 @@ export default function Home() {
     0
   );
 
+  // --- Loading indicator while fetching data ---
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -122,7 +129,7 @@ export default function Home() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* Greeting */}
+      {/* --- Greeting Section --- */}
       <View style={styles.header}>
         <Text style={styles.greeting}>
           Good{" "}
@@ -136,7 +143,7 @@ export default function Home() {
         <Text style={styles.subtext}>Ready to crush your fitness goals today?</Text>
       </View>
 
-      {/* --- Level Progress --- */}
+      {/* --- Level Progress Card --- */}
       <View style={[styles.card, styles.gradientPurple]}>
         <View style={styles.cardHeader}>
           <MaterialCommunityIcons name="trophy" size={20} color="#fff" />
@@ -153,17 +160,15 @@ export default function Home() {
         </View>
       </View>
 
-      {/* --- Steps & Water --- */}
+      {/* --- Steps & Water Cards --- */}
       <View style={styles.row}>
-        {/* Steps */}
+        {/* Steps Today */}
         <View style={[styles.card, styles.smallCard, styles.borderTeal]}>
           <View style={styles.cardHeader}>
             <MaterialCommunityIcons name="walk" size={20} color="#14b8a6" />
             <Text style={styles.cardTitle}>Steps Today</Text>
           </View>
-          <Text style={styles.bigText}>
-            {todaySteps?.steps?.toLocaleString() || "0"}
-          </Text>
+          <Text style={styles.bigText}>{todaySteps.toLocaleString()}</Text>
           <ProgressBar progress={getStepProgress()} color="#14b8a6" style={styles.progress} />
           <View style={styles.rowBetween}>
             <Text style={styles.subLabel}>
@@ -173,15 +178,13 @@ export default function Home() {
           </View>
         </View>
 
-        {/* Water */}
+        {/* Water Today */}
         <View style={[styles.card, styles.smallCard, styles.borderBlue]}>
           <View style={styles.cardHeader}>
             <MaterialCommunityIcons name="cup-water" size={20} color="#3b82f6" />
             <Text style={styles.cardTitle}>Water Today</Text>
           </View>
-          <Text style={[styles.bigText, { color: "#3b82f6" }]}>
-            {todayWater?.amount_ml || 0} ml
-          </Text>
+          <Text style={[styles.bigText, { color: "#3b82f6" }]}>{todayWater} ml</Text>
           <ProgressBar progress={getWaterProgress()} color="#3b82f6" style={styles.progress} />
           <View style={styles.rowBetween}>
             <Text style={styles.subLabel}>
@@ -228,7 +231,7 @@ export default function Home() {
         </View>
       </View>
 
-      {/* Motivation */}
+      {/* --- Motivation Card --- */}
       <View style={[styles.card, styles.gradientGreen]}>
         <Text style={[styles.motivation, { color: "#fff" }]}>
           {getStepProgress() >= 1
@@ -240,13 +243,14 @@ export default function Home() {
         <Text style={[styles.whiteText, { textAlign: "center" }]}>
           {getStepProgress() >= 1
             ? "You're a fitness champion! Time to celebrate and set new goals."
-            : `Just ${(user?.daily_step_goal || 8000) - (todaySteps?.steps || 0)} more steps to reach your goal!`}
+            : `Just ${(user?.daily_step_goal || 8000) - todaySteps} more steps to reach your goal!`}
         </Text>
       </View>
     </ScrollView>
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   scrollContent: { padding: 16, paddingBottom: 30 },

@@ -1,11 +1,11 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
-import { Trophy, Star, Target, Zap } from "lucide-react-native";
+import { Trophy, Star, Target, Zap } from "lucide-react-native"; // Icons for UI
 
 export default function Game() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
+      {/* -------- Header Section -------- */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Trophy size={32} color="#EAB308" /> 
@@ -14,11 +14,13 @@ export default function Game() {
         <Text style={styles.subHeader}>Level up your fitness journey!</Text>
       </View>
 
-      {/* Coming Soon */}
+      {/* -------- Coming Soon Card -------- */}
       <View style={styles.cardDashed}>
         <View style={styles.cardContent}>
+          {/* Game Emoji */}
           <Text style={styles.bigEmoji}>🎮</Text>
 
+          {/* Intro Text */}
           <View style={{ marginTop: 16 }}>
             <Text style={styles.title}>Exciting Games Coming Soon!</Text>
             <Text style={styles.description}>
@@ -27,10 +29,15 @@ export default function Game() {
             </Text>
           </View>
 
-          {/* Features Grid */}
+          {/* -------- Features Grid -------- */}
           <View style={styles.featuresGrid}>
-            {/* Daily Challenges */}
-            <View style={[styles.featureCard, { borderColor: "#FDE68A", backgroundColor: "#FEF9C3" }]}>
+            {/* Daily Challenges Feature */}
+            <View
+              style={[
+                styles.featureCard,
+                { borderColor: "#FDE68A", backgroundColor: "#FEF9C3" },
+              ]}
+            >
               <Star size={32} color="#EAB308" style={styles.icon} />
               <Text style={styles.featureTitle}>Daily Challenges</Text>
               <Text style={styles.featureDesc}>
@@ -38,8 +45,13 @@ export default function Game() {
               </Text>
             </View>
 
-            {/* Achievements */}
-            <View style={[styles.featureCard, { borderColor: "#E9D5FF", backgroundColor: "#F3E8FF" }]}>
+            {/* Achievements Feature */}
+            <View
+              style={[
+                styles.featureCard,
+                { borderColor: "#E9D5FF", backgroundColor: "#F3E8FF" },
+              ]}
+            >
               <Target size={32} color="#A855F7" style={styles.icon} />
               <Text style={styles.featureTitle}>Achievement System</Text>
               <Text style={styles.featureDesc}>
@@ -47,8 +59,13 @@ export default function Game() {
               </Text>
             </View>
 
-            {/* Power-ups */}
-            <View style={[styles.featureCard, { borderColor: "#BFDBFE", backgroundColor: "#DBEAFE" }]}>
+            {/* Power-ups Feature */}
+            <View
+              style={[
+                styles.featureCard,
+                { borderColor: "#BFDBFE", backgroundColor: "#DBEAFE" },
+              ]}
+            >
               <Zap size={32} color="#3B82F6" style={styles.icon} />
               <Text style={styles.featureTitle}>Power-ups</Text>
               <Text style={styles.featureDesc}>
@@ -57,6 +74,7 @@ export default function Game() {
             </View>
           </View>
 
+          {/* Footer Note */}
           <View style={{ marginTop: 20 }}>
             <Text style={styles.footerNote}>
               💡 In the meantime, keep collecting points by reaching your daily step and water goals!
@@ -68,10 +86,14 @@ export default function Game() {
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
+  // Root container styling
   container: {
     padding: 24,
   },
+
+  // ---------- Header ----------
   header: {
     alignItems: "center",
     marginBottom: 24,
@@ -92,6 +114,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 4,
   },
+
+  // ---------- Dashed Coming Soon Card ----------
   cardDashed: {
     borderWidth: 2,
     borderStyle: "dashed",
@@ -106,6 +130,8 @@ const styles = StyleSheet.create({
     fontSize: 64,
     marginBottom: 16,
   },
+
+  // ---------- Text Styles ----------
   title: {
     fontSize: 22,
     fontWeight: "bold",
@@ -118,6 +144,8 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     textAlign: "center",
   },
+
+  // ---------- Features Grid ----------
   featuresGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -147,6 +175,8 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     textAlign: "center",
   },
+
+  // ---------- Footer Note ----------
   footerNote: {
     fontSize: 13,
     color: "#6B7280",

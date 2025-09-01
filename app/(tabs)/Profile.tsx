@@ -15,12 +15,14 @@ import { auth } from "@/Firebase";
 import { User as UserIcon, LogOut, Save } from "lucide-react-native";
 
 export default function Profile() {
-  const [user, setUser] = useState<any>(null);
-  const [formData, setFormData] = useState<any>({});
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  // State variables
+  const [user, setUser] = useState<any>(null); // Stores user info (from Firebase)
+  const [formData, setFormData] = useState<any>({}); // Editable profile fields
+  const [loading, setLoading] = useState(true); // Loading indicator for profile fetch
+  const [editing, setEditing] = useState(false); // Toggles edit mode
+  const [saving, setSaving] = useState(false); // Indicates save operation in progress
 
+  // Fetch user profile data when component mounts
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -28,10 +30,13 @@ export default function Profile() {
     const db = getDatabase();
     const profileRef = ref(db, `users/${currentUser.uid}`);
 
+    // Listen for profile changes in Firebase Realtime Database
     const unsubscribe = onValue(profileRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
         setUser({ ...currentUser, ...data });
+
+        // Pre-fill form data with existing profile values
         setFormData({
           full_name: data.full_name || currentUser.email?.split("@")[0],
           age: data.age || "",
@@ -44,13 +49,15 @@ export default function Profile() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribe(); // Cleanup listener
   }, []);
 
+  // Handle changes in input fields
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
+  // Save updated profile data to Firebase
   const saveProfile = async () => {
     if (!auth.currentUser) return;
     setSaving(true);
@@ -64,7 +71,7 @@ export default function Profile() {
         daily_step_goal: parseInt(formData.daily_step_goal),
         daily_water_goal: parseInt(formData.daily_water_goal),
       });
-      setEditing(false);
+      setEditing(false); // Exit edit mode after saving
     } catch (error) {
       Alert.alert("Error", "Failed to save profile.");
       console.error(error);
@@ -72,6 +79,7 @@ export default function Profile() {
     setSaving(false);
   };
 
+  // Log out the user
   const handleLogout = async () => {
     try {
       await signOut(getAuth());
@@ -81,26 +89,28 @@ export default function Profile() {
     }
   };
 
+  // Calculate BMI based on weight & height
   const getBMI = () => {
     if (!formData?.weight || !formData?.height) return null;
-    const h = formData.height / 100;
-    return (formData.weight / (h * h)).toFixed(1);
+    const h = formData.height / 100; // Convert cm → meters
+    return (formData.weight / (h * h)).toFixed(1); // BMI formula
   };
 
+  // Determine BMI category and assign color
   const getBMIStatus = () => {
-  const bmiString = getBMI();
-  if (!bmiString) return null; // handles null or empty string safely
+    const bmiString = getBMI();
+    if (!bmiString) return null;
 
-  const bmi = parseFloat(bmiString);
-  if (isNaN(bmi)) return null;
+    const bmi = parseFloat(bmiString);
+    if (isNaN(bmi)) return null;
 
-  if (bmi < 18.5) return { status: "Underweight", color: "#3b82f6" };
-  if (bmi < 25) return { status: "Normal", color: "#16a34a" };
-  if (bmi < 30) return { status: "Overweight", color: "#eab308" };
-  return { status: "Obese", color: "#dc2626" };
-};
+    if (bmi < 18.5) return { status: "Underweight", color: "#3b82f6" };
+    if (bmi < 25) return { status: "Normal", color: "#16a34a" };
+    if (bmi < 30) return { status: "Overweight", color: "#eab308" };
+    return { status: "Obese", color: "#dc2626" };
+  };
 
-
+  // Show loader while profile is fetching
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -120,11 +130,12 @@ export default function Profile() {
         </Text>
       </View>
 
-      {/* Profile Card */}
+      {/* Profile Card with user info */}
       <View style={styles.card}>
         <Text style={styles.name}>{formData.full_name}</Text>
         <Text style={styles.email}>{user?.email}</Text>
 
+        {/* Fitness level and points */}
         <View style={styles.row}>
           <View style={styles.metric}>
             <Text style={[styles.metricValue, { color: "#9333ea" }]}>
@@ -141,7 +152,7 @@ export default function Profile() {
         </View>
       </View>
 
-      {/* Personal Info */}
+      {/* Personal Information (Editable) */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Personal Information</Text>
@@ -150,6 +161,7 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
 
+        {/* Input fields for user data */}
         {["full_name", "age", "height", "weight"].map((field, idx) => (
           <TextInput
             key={idx}
@@ -162,6 +174,7 @@ export default function Profile() {
           />
         ))}
 
+        {/* BMI Display */}
         {getBMI() && (
           <View style={styles.bmiBox}>
             <Text style={styles.bmiLabel}>BMI</Text>
@@ -172,6 +185,7 @@ export default function Profile() {
           </View>
         )}
 
+        {/* Save Button (visible only in edit mode) */}
         {editing && (
           <TouchableOpacity
             style={styles.saveBtn}
@@ -186,7 +200,7 @@ export default function Profile() {
         )}
       </View>
 
-      {/* Daily Goals */}
+      {/* Daily Goals Section */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Daily Goals</Text>
         {["daily_step_goal", "daily_water_goal"].map((field, idx) => (
@@ -202,7 +216,7 @@ export default function Profile() {
         ))}
       </View>
 
-      {/* Logout */}
+      {/* Logout Button */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
         <LogOut color="white" size={18} />
         <Text style={styles.logoutText}>Sign Out</Text>

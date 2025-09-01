@@ -10,45 +10,76 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { app } from "@/Firebase";
-import { Heart } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { app } from "@/Firebase"; // Firebase app instance (configured separately)
+import { Heart } from "lucide-react-native"; // Heart icon
+import { LinearGradient } from "expo-linear-gradient"; // Gradient background
 
+// -------------------------
+// Login Screen Component
+// -------------------------
+// This screen lets users log in with their email & password.
+// Uses Firebase Authentication for user validation.
+// If login is successful → navigates to Home screen.
+// If login fails → shows error messages or redirects to Sign Up.
+// -------------------------
 export default function LoginScreen() {
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  // -------------------------
+  // State variables
+  // -------------------------
+  const [email, setEmail] = useState<string>("");       // Stores user's email input
+  const [password, setPassword] = useState<string>(""); // Stores user's password input
+  const [loading, setLoading] = useState<boolean>(false); // Tracks login button state (loading spinner)
 
-  const router = useRouter();
-  const auth = getAuth(app);
+  const router = useRouter(); // Used to navigate between screens
+  const auth = getAuth(app);  // Firebase Auth instance
 
+  // -------------------------
+  // Function: handleLogin
+  // -------------------------
+  // This function runs when user taps "Sign In".
+  // 1. Checks if fields are filled.
+  // 2. Sends login request to Firebase.
+  // 3. If successful → navigates to Home.
+  // 4. If failed → shows error alerts (e.g., wrong password, no user found).
+  // -------------------------
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please enter email and password");
       return;
     }
 
-    setLoading(true);
+    setLoading(true); // Show spinner while Firebase processes login
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.replace("/(tabs)/Home"); 
+      await signInWithEmailAndPassword(auth, email, password); // Firebase login
+      router.replace("/(tabs)/Home"); // Redirect to Home if successful
     } catch (error: any) {
+      // Handle specific Firebase error codes
       if (error.code === "auth/user-not-found") {
         Alert.alert("User Not Found", "Please create an account");
-        router.push("/SignUp");
+        router.push("/SignUp"); // Navigate to Sign Up page
       } else if (error.code === "auth/wrong-password") {
         Alert.alert("Login Failed", "Incorrect password. Try again.");
       } else {
-        Alert.alert("Login Failed", error.message);
+        Alert.alert("Login Failed", error.message); // Any other error
       }
     }
-    setLoading(false);
+    setLoading(false); // Hide spinner after process
   };
 
+  // -------------------------
+  // UI Layout
+  // -------------------------
+  // Screen has:
+  // 1. Header with app logo + title + subtitle.
+  // 2. Login form (email + password).
+  // 3. Button for login.
+  // 4. Link to Sign Up page.
+  // -------------------------
   return (
     <View style={styles.container}>
-      {/* Logo + Title */}
+      {/* ---------- Header Section ---------- */}
       <View style={styles.header}>
+        {/* Gradient circle with heart icon */}
         <LinearGradient
           colors={["#14b8a6", "#3b82f6"]}
           style={styles.iconCircle}
@@ -57,47 +88,53 @@ export default function LoginScreen() {
         >
           <Heart color="white" size={32} />
         </LinearGradient>
+
+        {/* Title & Subtitle */}
         <Text style={styles.title}>Welcome to Wellmoria</Text>
         <Text style={styles.subtitle}>
           Your gamified fitness journey starts here.
         </Text>
       </View>
 
-      {/* Card */}
+      {/* ---------- Login Card ---------- */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Sign In</Text>
 
+        {/* Email input */}
         <TextInput
           style={styles.input}
           placeholder="Email"
           placeholderTextColor="#94a3b8"
           value={email}
           onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
+          autoCapitalize="none" // Prevents auto-capitalization of email
+          keyboardType="email-address" // Keyboard optimized for email entry
         />
 
+        {/* Password input */}
         <TextInput
           style={styles.input}
           placeholder="Password"
           placeholderTextColor="#94a3b8"
-          secureTextEntry
+          secureTextEntry // Hides password input
           value={password}
           onChangeText={setPassword}
         />
 
+        {/* Login button (shows spinner when loading) */}
         <TouchableOpacity
           style={styles.button}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={loading} // Disabled during login process
         >
           {loading ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color="white" /> // Spinner while waiting
           ) : (
             <Text style={styles.buttonText}>Sign In</Text>
           )}
         </TouchableOpacity>
 
+        {/* Link to Sign Up page */}
         <TouchableOpacity onPress={() => router.push("../SignUp")}>
           <Text style={styles.link}>Need an account? Sign up</Text>
         </TouchableOpacity>
@@ -106,6 +143,7 @@ export default function LoginScreen() {
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,

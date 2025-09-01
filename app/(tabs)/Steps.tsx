@@ -1,28 +1,39 @@
-import { auth } from "@/Firebase";
-import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { format, subDays } from "date-fns";
-import { Pedometer } from "expo-sensors";
-import { getDatabase, onValue, ref, set, update, off } from "firebase/database";
+import { auth } from "@/Firebase"; // Firebase authentication instance
+import { Ionicons } from "@expo/vector-icons"; // Icons for UI
+import AsyncStorage from "@react-native-async-storage/async-storage"; // Local storage for caching steps
+import { format, subDays } from "date-fns"; // Date formatting utilities
+import { Pedometer } from "expo-sensors"; // Expo's step counter sensor
+import { getDatabase, onValue, ref, update, off } from "firebase/database"; // Firebase Realtime DB utilities
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
-import { LineChart } from "react-native-chart-kit";
+import { LineChart } from "react-native-chart-kit"; // Chart for weekly steps
 
 export default function StepsScreen() {
+  // ---------- STATE VARIABLES ----------
   const [isPedometerAvailable, setIsPedometerAvailable] = useState("checking");
-  const [todaySteps, setTodaySteps] = useState<number>(0);
-  const [weeklySteps, setWeeklySteps] = useState<any[]>([]);
-  const [dailyStepGoal, setDailyStepGoal] = useState<number>(8000); // dynamic goal
-  const [loading, setLoading] = useState(true);
-  const user = auth.currentUser;
+  const [todaySteps, setTodaySteps] = useState<number>(0); // Steps counted today
+  const [weeklySteps, setWeeklySteps] = useState<any[]>([]); // Array of last 7 days data
+  const [dailyStepGoal, setDailyStepGoal] = useState<number>(8000); // Default goal = 8000 steps
+  const [loading, setLoading] = useState(true); // Loading state until data is ready
+  const user = auth.currentUser; // Logged-in Firebase user
 
+  // ---------- Runs once when the component first loads ----------
   useEffect(() => {
     if (!user) return;
+
+    // Reset daily steps if a new day has started
     checkAndResetSteps();
+
+    // Start listening to pedometer data
     const unsubscribe = subscribePedometer();
+
+    // Load weekly step history from Firebase
     const offWeekly = loadWeeklyData();
+
+    // Load user’s step goal from Firebase
     const offGoal = loadStepGoal();
 
+    // Cleanup listeners when component unmounts
     return () => {
       unsubscribe && unsubscribe();
       offWeekly && offWeekly();
@@ -30,7 +41,111 @@ export default function StepsScreen() {
     };
   }, [user]);
 
-  // Listen for changes to daily_step_goal
+  // ---------- RESET STEPS EACH DAY ----------
+  const checkAndResetSteps = async () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const savedDate = await AsyncStorage.getItem("stepsDate");
+
+    if (savedDate !== today) {
+      // If it’s a new day, reset step count in local storage
+      await AsyncStorage.setItem("stepsDate", today);
+      await AsyncStorage.setItem("stepsCount", "0");
+      setTodaySteps(0);
+    } else {
+      // Otherwise, load saved steps
+      const savedSteps = await AsyncStorage.getItem("stepsCount");
+      if (savedSteps) setTodaySteps(parseInt(savedSteps));
+    }
+  };
+
+  // ---------- PEDOMETER SUBSCRIPTION ----------
+  const subscribePedometer = () => {
+    // Check if pedometer is available
+    Pedometer.isAvailableAsync().then(
+      (result) => setIsPedometerAvailable(String(result)),
+      () => setIsPedometerAvailable("false")
+    );
+
+    // Sync steps (fetch count + update Firebase + cache locally)
+    const syncSteps = async () => {
+      const end = new Date();
+      const start = new Date();
+      start.setHours(0, 0, 0, 0); // midnight = start of day
+
+      try {
+        // Get today’s step count from device sensor
+        const { steps } = await Pedometer.getStepCountAsync(start, end);
+
+        setTodaySteps(steps);
+        await AsyncStorage.setItem("stepsCount", steps.toString());
+
+        if (user) {
+          const db = getDatabase();
+          const today = format(new Date(), "yyyy-MM-dd");
+
+          // Calculate derived stats
+          const calories = calculateCalories(steps);
+          const distance = calculateDistance(steps);
+
+          // Save today's data in Firebase
+          await update(ref(db, `users/${user.uid}/steps/${today}`), {
+            date: today,
+            steps,
+            calories_burned: calories,
+            distance_km: distance,
+          });
+
+          // Save as a quick "today" reference
+          await update(ref(db, `users/${user.uid}/today`), {
+            date: today,
+            steps,
+            calories_burned: calories,
+            distance_km: distance,
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching step count:", err);
+      }
+    };
+
+    // Run once immediately
+    syncSteps();
+
+    // Keep listening for step updates
+    const subscription = Pedometer.watchStepCount(() => {
+      syncSteps();
+    });
+
+    return () => subscription && subscription.remove();
+  };
+
+  // ---------- LOAD WEEKLY DATA FROM FIREBASE ----------
+  const loadWeeklyData = () => {
+    if (!user) return;
+    const db = getDatabase();
+    const stepsRef = ref(db, `users/${user.uid}/steps`);
+
+    const listener = onValue(stepsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+
+      // Construct last 7 days of steps (including days with 0 steps)
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const dateKey = format(subDays(new Date(), 6 - i), "yyyy-MM-dd");
+        return {
+          date: format(subDays(new Date(), 6 - i), "EEE"), // e.g. Mon, Tue
+          steps: data[dateKey]?.steps || 0,
+          goal: dailyStepGoal, // compare against goal
+        };
+      });
+
+      setWeeklySteps(last7Days);
+      setLoading(false);
+    });
+
+    return () => off(stepsRef, "value", listener);
+  };
+
+  // ---------- LOAD USER'S STEP GOAL ----------
   const loadStepGoal = () => {
     if (!user) return;
     const db = getDatabase();
@@ -45,110 +160,12 @@ export default function StepsScreen() {
     return () => off(goalRef, "value", listener);
   };
 
-  // Reset baseline when new day starts
-  const checkAndResetSteps = async () => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    const savedDate = await AsyncStorage.getItem("stepsDate");
-
-    if (savedDate !== today) {
-      await AsyncStorage.setItem("stepsDate", today);
-      await AsyncStorage.setItem("stepsCount", "0");
-      await AsyncStorage.setItem("baselineSteps", "0");
-
-      if (user) {
-        const db = getDatabase();
-        await set(ref(db, `users/${user.uid}/steps/${today}`), {
-          date: today,
-          steps: 0,
-          calories_burned: 0,
-          distance_km: 0,
-        });
-        await update(ref(db, `users/${user.uid}/today`), {
-          date: today,
-          steps: 0,
-          calories_burned: 0,
-          distance_km: 0,
-        });
-      }
-      setTodaySteps(0);
-    } else {
-      const savedSteps = await AsyncStorage.getItem("stepsCount");
-      if (savedSteps) setTodaySteps(parseInt(savedSteps));
-    }
-  };
-
-  // Subscribe to pedometer
-  const subscribePedometer = () => {
-    Pedometer.isAvailableAsync().then(
-      (result) => setIsPedometerAvailable(String(result)),
-      () => setIsPedometerAvailable("false")
-    );
-
-    const subscription = Pedometer.watchStepCount(async (result) => {
-      const totalDeviceSteps = result.steps;
-
-      let baseline = parseInt((await AsyncStorage.getItem("baselineSteps")) || "0");
-      if (baseline === 0) {
-        baseline = totalDeviceSteps;
-        await AsyncStorage.setItem("baselineSteps", baseline.toString());
-      }
-
-      const stepsToday = totalDeviceSteps - baseline;
-      setTodaySteps(stepsToday);
-      await AsyncStorage.setItem("stepsCount", stepsToday.toString());
-
-      if (user) {
-        const db = getDatabase();
-        const today = format(new Date(), "yyyy-MM-dd");
-
-        const calories = calculateCalories(stepsToday);
-        const distance = calculateDistance(stepsToday);
-
-        await update(ref(db, `users/${user.uid}/steps/${today}`), {
-          date: today,
-          steps: stepsToday,
-          calories_burned: calories,
-          distance_km: distance,
-        });
-        await update(ref(db, `users/${user.uid}/today`), {
-          date: today,
-          steps: stepsToday,
-          calories_burned: calories,
-          distance_km: distance,
-        });
-      }
-    });
-
-    return () => subscription && subscription.remove();
-  };
-
-  // Load last 7 days
-  const loadWeeklyData = () => {
-    if (!user) return;
-    const db = getDatabase();
-    const stepsRef = ref(db, `users/${user.uid}/steps`);
-
-    const listener = onValue(stepsRef, (snapshot) => {
-      const data = snapshot.val() || {};
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const dateKey = format(subDays(new Date(), 6 - i), "yyyy-MM-dd");
-        return {
-          date: format(subDays(new Date(), 6 - i), "EEE"),
-          steps: data[dateKey]?.steps || 0,
-          goal: dailyStepGoal, // 🔹 dynamic
-        };
-      });
-      setWeeklySteps(last7Days);
-      setLoading(false);
-    });
-
-    return () => off(stepsRef, "value", listener);
-  };
-
-  const calculateCalories = (steps: number) => steps * 0.04;
-  const calculateDistance = (steps: number) => (steps * 0.762) / 1000;
+  // ---------- HELPER FUNCTIONS ----------
+  const calculateCalories = (steps: number) => steps * 0.04; // 1 step ≈ 0.04 kcal
+  const calculateDistance = (steps: number) => (steps * 0.762) / 1000; // step length ≈ 0.762m
   const getTotalWeeklySteps = () => weeklySteps.reduce((sum, d) => sum + d.steps, 0);
 
+  // ---------- LOADING STATE ----------
   if (loading) {
     return (
       <View style={styles.center}>
@@ -157,16 +174,17 @@ export default function StepsScreen() {
     );
   }
 
+  // ---------- MAIN UI ----------
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.header}>
         <Ionicons name="walk" size={32} color="#14b8a6" />
         <Text style={styles.title}>Step Tracker</Text>
         <Text style={styles.subtitle}>Every step brings you closer to your goals!</Text>
       </View>
 
-      {/* Today's Steps */}
+      {/* TODAY'S STEPS CARD */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Today's Progress</Text>
@@ -174,6 +192,8 @@ export default function StepsScreen() {
         </View>
         <Text style={styles.steps}>{todaySteps.toLocaleString()}</Text>
         <Text style={styles.goal}>of {dailyStepGoal.toLocaleString()} steps</Text>
+
+        {/* Calories + Distance Stats */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Ionicons name="flame" size={18} color="#f97316" />
@@ -188,15 +208,15 @@ export default function StepsScreen() {
         </View>
       </View>
 
-      {/* Weekly Chart */}
+      {/* WEEKLY LINE CHART */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>This Week's Journey</Text>
         <LineChart
           data={{
-            labels: weeklySteps.map((d) => d.date),
+            labels: weeklySteps.map((d) => d.date), // X-axis = days
             datasets: [
-              { data: weeklySteps.map((d) => d.steps), color: () => "#14b8a6" },
-              { data: weeklySteps.map((d) => d.goal), color: () => "#94a3b8" },
+              { data: weeklySteps.map((d) => d.steps), color: () => "#14b8a6" }, // steps line
+              { data: weeklySteps.map((d) => d.goal), color: () => "#94a3b8" }, // goal line
             ],
             legend: ["Steps", "Goal"],
           }}
@@ -216,7 +236,7 @@ export default function StepsScreen() {
         />
       </View>
 
-      {/* Weekly Summary */}
+      {/* WEEKLY SUMMARY */}
       <View style={[styles.card, styles.gradientCard]}>
         <Text style={[styles.cardTitle, { color: "white" }]}>Weekly Achievement</Text>
         <View style={styles.statsRow}>
@@ -236,6 +256,7 @@ export default function StepsScreen() {
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#f9fafb" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },

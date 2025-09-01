@@ -14,6 +14,8 @@ import { getDatabase, ref, onValue, update, set } from "firebase/database";
 import { auth } from "@/Firebase";
 import { LineChart } from "react-native-chart-kit";
 
+// Predefined water amounts (presets) for quick-add feature
+// Each object contains ml amount, label, and emoji icon
 const WATER_PRESETS = [
   { amount: 250, label: "Glass", icon: "🥛" },
   { amount: 330, label: "Bottle", icon: "🍼" },
@@ -22,13 +24,20 @@ const WATER_PRESETS = [
 ];
 
 export default function Water() {
+  // State to store today’s hydration (amount + log)
   const [todayWater, setTodayWater] = useState<any>(null);
+
+  // Stores last 7 days hydration data for chart & summary
   const [weeklyWater, setWeeklyWater] = useState<any[]>([]);
+
+  // Loading indicators
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
+  // Current signed-in user from Firebase auth
   const currentUser = auth.currentUser;
 
+  // --- Lifecycle: when component mounts ---
   useEffect(() => {
     if (!currentUser) return;
 
@@ -36,18 +45,21 @@ export default function Water() {
     const today = format(new Date(), "yyyy-MM-dd");
     const waterRef = ref(db, `users/${currentUser.uid}/water/${today}`);
 
-    // listen for today's hydration
+    // Realtime listener for today’s hydration progress
+    // Keeps UI synced with Firebase
     const unsubscribe = onValue(waterRef, (snapshot) => {
       setTodayWater(snapshot.val() || { amount_ml: 0, log_entries: [] });
       setLoading(false);
     });
 
-    // load weekly hydration
+    // Load hydration for the last 7 days (weekly chart & summary)
     loadWeeklyData();
 
+    // Cleanup listener on unmount
     return () => unsubscribe();
   }, [currentUser]);
 
+  // --- Loads last 7 days hydration data ---
   const loadWeeklyData = () => {
     if (!currentUser) return;
     const db = getDatabase();
@@ -55,18 +67,22 @@ export default function Water() {
 
     onValue(stepsRef, (snapshot) => {
       const data = snapshot.val() || {};
+
+      // Build array of last 7 days (date, amount, goal)
       const last7Days = Array.from({ length: 7 }, (_, i) => {
         const dateKey = format(subDays(new Date(), 6 - i), "yyyy-MM-dd");
         return {
-          date: format(subDays(new Date(), 6 - i), "EEE"),
-          amount_ml: data[dateKey]?.amount_ml || 0,
-          goal: 2000,
+          date: format(subDays(new Date(), 6 - i), "EEE"), // short weekday label
+          amount_ml: data[dateKey]?.amount_ml || 0, // fallback 0 if no entry
+          goal: 2000, // daily hydration goal
         };
       });
+
       setWeeklyWater(last7Days);
     });
   };
 
+  // --- Adds new water intake entry ---
   const addWater = async (amount: number) => {
     if (!currentUser) return;
     setAdding(true);
@@ -77,6 +93,7 @@ export default function Water() {
       const now = format(new Date(), "HH:mm");
       const waterRef = ref(db, `users/${currentUser.uid}/water/${today}`);
 
+      // Calculate updated amount and append new entry
       const currentAmount = todayWater?.amount_ml || 0;
       const newAmount = currentAmount + amount;
       const newEntries = [
@@ -84,31 +101,50 @@ export default function Water() {
         { time: now, amount },
       ];
 
+      // Save today’s updated hydration log to Firebase
       await set(waterRef, {
         amount_ml: newAmount,
         log_entries: newEntries,
       });
 
+      // Update today’s summary section in Firebase
       const todayRef = ref(db, `users/${currentUser.uid}/today`);
       await update(todayRef, {
         water_ml: newAmount,
         date: today,
       });
+
+      // Increment user’s total points
+      // 1 point for every 100 ml consumed
+      const userRef = ref(db, `users/${currentUser.uid}`);
+      onValue(
+        userRef,
+        async (snap) => {
+          const userData = snap.val() || {};
+          const newPoints =
+            (userData.total_points || 0) + Math.floor(amount / 100);
+          await update(userRef, { total_points: newPoints });
+        },
+        { onlyOnce: true } // ensure it runs once to avoid multiple updates
+      );
     } catch (err) {
       console.error("Error adding water:", err);
     }
     setAdding(false);
   };
 
+  // --- Returns today’s progress towards daily goal in % ---
   const getWaterProgress = () => {
     if (!todayWater) return 0;
     const goal = 2000;
-    return Math.min((todayWater.amount_ml / goal) * 100, 100);
+    return Math.min((todayWater.amount_ml / goal) * 100, 100); // capped at 100%
   };
 
+  // --- Sums total ml consumed over 7 days ---
   const getTotalWeeklyWater = () =>
     weeklyWater.reduce((sum, d) => sum + d.amount_ml, 0);
 
+  // --- Show loading spinner while fetching data ---
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -117,16 +153,17 @@ export default function Water() {
     );
   }
 
+  // --- Main UI ---
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
+      {/* Header Section */}
       <View style={styles.header}>
         <Ionicons name="water" size={32} color="#3b82f6" />
         <Text style={styles.title}>Hydration Tracker</Text>
         <Text style={styles.subtitle}>Stay hydrated, stay healthy 💙</Text>
       </View>
 
-      {/* Progress Card */}
+      {/* Today’s Progress Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Today's Hydration</Text>
@@ -140,6 +177,7 @@ export default function Water() {
           <Text style={styles.subtitle}>
             Goal: 2000 ml ({getWaterProgress().toFixed(0)}%)
           </Text>
+          {/* Progress Bar */}
           <View style={styles.progressBar}>
             <View
               style={[styles.progressFill, { width: `${getWaterProgress()}%` }]}
@@ -148,16 +186,16 @@ export default function Water() {
         </View>
       </View>
 
-      {/* Weekly Chart */}
+      {/* Weekly Hydration Chart */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>This Week's Hydration</Text>
         <LineChart
           data={{
             labels: weeklyWater.map((d) => d.date),
             datasets: [
-              { data: weeklyWater.map((d) => d.amount_ml) },
+              { data: weeklyWater.map((d) => d.amount_ml) }, // actual hydration
               {
-                data: weeklyWater.map((d) => d.goal),
+                data: weeklyWater.map((d) => d.goal), // constant daily goal
                 color: () => "#94a3b8",
               },
             ],
@@ -177,7 +215,7 @@ export default function Water() {
         />
       </View>
 
-      {/* Weekly Summary */}
+      {/* Weekly Summary (Total + Goals Met) */}
       <View style={[styles.card, styles.gradientCard]}>
         <Text style={[styles.cardTitle, { color: "white" }]}>
           Weekly Hydration
@@ -196,14 +234,14 @@ export default function Water() {
         </View>
       </View>
 
-      {/* Quick Add */}
+      {/* Quick Add Buttons (presets) */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Quick Add</Text>
         <View style={styles.quickAddGrid}>
           {WATER_PRESETS.map((preset, i) => (
             <TouchableOpacity
               key={i}
-              disabled={adding}
+              disabled={adding} // disable while saving
               onPress={() => addWater(preset.amount)}
               style={styles.quickAddBtn}
             >
@@ -215,15 +253,16 @@ export default function Water() {
         </View>
       </View>
 
-      {/* Log */}
+      {/* Daily Log (reverse-chronological order) */}
       {todayWater?.log_entries?.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Today's Log</Text>
           {todayWater.log_entries
             .slice()
-            .sort((a: any, b: any) => b.time.localeCompare(a.time))
+            .sort((a: any, b: any) => b.time.localeCompare(a.time)) // latest first
             .map((entry: any, i: number) => (
               <View key={i} style={styles.logRow}>
+                {/* Left side: icon + entry info */}
                 <View style={styles.logLeft}>
                   <View style={styles.logIcon}>
                     <Ionicons name="water" size={16} color="#3b82f6" />
@@ -233,6 +272,7 @@ export default function Water() {
                     <Text style={styles.logTime}>{entry.time}</Text>
                   </View>
                 </View>
+                {/* Right side: points earned */}
                 <Text style={styles.logPoints}>
                   +{Math.floor(entry.amount / 100)} pts
                 </Text>
@@ -244,6 +284,7 @@ export default function Water() {
   );
 }
 
+// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff", padding: 16 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
